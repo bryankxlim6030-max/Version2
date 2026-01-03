@@ -61,10 +61,18 @@ elif page == "Page 2: 3D Analysis & Derivatives":
     x_min, x_max = st.sidebar.slider("X Range", -10.0, 10.0, (-5.0, 5.0))
     y_min, y_max = st.sidebar.slider("Y Range", -10.0, 10.0, (-5.0, 5.0))
     
-    st.sidebar.subheader("Point Analysis (x0, y0)")
-    px0 = st.sidebar.number_input("x coordinate", value=0.0)
-    py0 = st.sidebar.number_input("y coordinate", value=0.0)
-    show_tangents = st.sidebar.checkbox("Show Tangent Lines & Gradient", value=True)
+    mode = st.sidebar.radio("Mode:", ["Standard", "Analyse"])
+    
+    show_dx, show_dy, show_grad = False, False, False
+    px0, py0 = 0.0, 0.0
+    
+    if mode == "Analyse":
+        st.sidebar.subheader("Point Selection (x0, y0)")
+        px0 = st.sidebar.number_input("x coordinate", value=0.0)
+        py0 = st.sidebar.number_input("y coordinate", value=0.0)
+        show_dx = st.sidebar.checkbox("Show ∂f/∂x (Red Line)")
+        show_dy = st.sidebar.checkbox("Show ∂f/∂y (Blue Line)")
+        show_grad = st.sidebar.checkbox("Show Gradient Tangent Plane (Purple)")
 
     try:
         f_s = smart_parse(user_input)
@@ -76,37 +84,43 @@ elif page == "Page 2: 3D Analysis & Derivatives":
 
         fig = go.Figure()
         add_reference_planes(fig, [x_min, x_max], [y_min, y_max], [np.nanmin(Z), np.nanmax(Z)])
-        fig.add_trace(go.Surface(z=Z, x=X, y=Y, opacity=0.7, colorscale='Viridis', name='f(x,y)'))
+        
+        main_opacity = 1.0 if mode == "Standard" else 0.5
+        fig.add_trace(go.Surface(z=Z, x=X, y=Y, opacity=main_opacity, colorscale='Viridis', name='f(x,y)'))
 
-        if show_tangents:
-            # Point value and slopes
+        if mode == "Analyse":
             z0 = float(f_s.subs({x_s: px0, y_s: py0}))
             slope_x = float(df_dx.subs({x_s: px0, y_s: py0}))
             slope_y = float(df_dy.subs({x_s: px0, y_s: py0}))
 
-            # Tangent Line in X-direction
-            tx = np.linspace(px0-2, px0+2, 10)
-            tz_x = z0 + slope_x * (tx - px0)
-            fig.add_trace(go.Scatter3d(x=tx, y=[py0]*10, z=tz_x, mode='lines', line=dict(color='red', width=8), name='Tangent w.r.t x'))
+            if show_dx:
+                tx = np.linspace(px0-1.5, px0+1.5, 10)
+                tz_x = z0 + slope_x * (tx - px0)
+                fig.add_trace(go.Scatter3d(x=tx, y=[py0]*10, z=tz_x, mode='lines', line=dict(color='red', width=10), name='∂f/∂x'))
 
-            # Tangent Line in Y-direction
-            ty = np.linspace(py0-2, py0+2, 10)
-            tz_y = z0 + slope_y * (ty - py0)
-            fig.add_trace(go.Scatter3d(x=[px0]*10, y=ty, z=tz_y, mode='lines', line=dict(color='blue', width=8), name='Tangent w.r.t y'))
+            if show_dy:
+                ty = np.linspace(py0-1.5, py0+1.5, 10)
+                tz_y = z0 + slope_y * (ty - py0)
+                fig.add_trace(go.Scatter3d(x=[px0]*10, y=ty, z=tz_y, mode='lines', line=dict(color='blue', width=10), name='∂f/∂y'))
             
-            # Point marker
+            if show_grad:
+                # Local Tangent Plane representing the gradient direction
+                gx = np.linspace(px0-1, px0+1, 10); gy = np.linspace(py0-1, py0+1, 10)
+                GX, GY = np.meshgrid(gx, gy)
+                GZ = z0 + slope_x*(GX - px0) + slope_y*(GY - py0)
+                fig.add_trace(go.Surface(z=GZ, x=GX, y=GY, opacity=0.6, colorscale=[[0, 'purple'], [1, 'purple']], showscale=False, name='Gradient Plane'))
+
             fig.add_trace(go.Scatter3d(x=[px0], y=[py0], z=[z0], mode='markers', marker=dict(size=8, color='black')))
 
         st.plotly_chart(fig, use_container_width=True)
-        st.write(f"**Point Analysis at ({px0}, {py0}):**")
-        st.latex(f"f({px0}, {py0}) = {z0:.2f}")
-        st.latex(f"\\frac{{\\partial f}}{{\\partial x}} = {slope_x:.2f} \\quad \\frac{{\\partial f}}{{\\partial y}} = {slope_y:.2f}")
+        if mode == "Analyse":
+            st.latex(f"f({px0}, {py0}) = {z0:.2f} \\quad \\nabla f = \\langle {slope_x:.2f}, {slope_y:.2f} \\rangle")
 
     except Exception as e:
         st.error(f"Error: {e}")
 
 # ---------------------------------------------------------
-# PAGE 3: LEVEL CURVES (Fixed 3D Intersection)
+# PAGE 3: LEVEL CURVES (Fixed without Matplotlib)
 # ---------------------------------------------------------
 elif page == "Page 3: Real-Time Level Curves":
     st.title("🗺️ Page 3: 3D Intersection Level Curves")
@@ -118,30 +132,30 @@ elif page == "Page 3: Real-Time Level Curves":
     y_min, y_max = st.sidebar.slider("Y Range", -10.0, 10.0, (-5.0, 5.0))
     
     f_s = smart_parse(user_input); f_np = sp.lambdify((x_s, y_s), f_s, 'numpy')
-    x_v = np.linspace(x_min, x_max, 60); y_v = np.linspace(y_min, y_max, 60)
+    x_v = np.linspace(x_min, x_max, 50); y_v = np.linspace(y_min, y_max, 50)
     X, Y = np.meshgrid(x_v, y_v); Z = f_np(X, Y)
     
     k_val = st.sidebar.slider("Adjust Shifting Plane (z = k)", float(np.nanmin(Z)), float(np.nanmax(Z)), float(np.nanmean(Z)))
 
     fig = go.Figure()
     add_reference_planes(fig, [x_min, x_max], [y_min, y_max], [np.nanmin(Z), np.nanmax(Z)], show_z=False)
-    
-    # f(x,y) surface
     fig.add_trace(go.Surface(z=Z, x=X, y=Y, opacity=0.5, colorscale='Viridis', showscale=False))
     
     # Yellow Shifting Plane
     K_plane = np.full_like(Z, k_val)
     fig.add_trace(go.Surface(z=K_plane, x=X, y=Y, opacity=0.3, colorscale=[[0, 'yellow'], [1, 'yellow']], showscale=False))
 
-    # Calculate 3D Intersection Points
-    # Find contours at the specific k-level
-    import matplotlib.pyplot as plt
-    cs = plt.contour(X, Y, Z, levels=[k_val])
-    for path in cs.collections[0].get_paths():
-        v = path.vertices
-        fig.add_trace(go.Scatter3d(x=v[:, 0], y=v[:, 1], z=[k_val]*len(v), 
-                                   mode='lines', line=dict(color='black', width=10), name='Intersection'))
-    plt.close()
+    # Intersection Line (using Plotly's native contour data extraction)
+    fig.add_trace(go.Contour(
+        z=Z, x=x_v, y=y_v,
+        contours=dict(start=k_val, end=k_val, size=0.01, showlines=True),
+        line=dict(color='black', width=10),
+        showscale=False,
+        contours_coloring='none'
+    ))
+    
+    # This ensures the black line stays on the plane in the 3D scene
+    fig.update_traces(selector=dict(type='contour'), contours_z=dict(show=True, start=k_val, end=k_val, usecolormodel=False, project=dict(z=True)))
 
     fig.update_layout(scene=dict(aspectmode='cube'))
     st.plotly_chart(fig, use_container_width=True)
