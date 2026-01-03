@@ -27,9 +27,9 @@ def add_reference_planes(fig, x_r, y_r, z_r, show_z=True):
         fig.add_trace(go.Surface(x=[x_r[0], x_r[1]], y=[y_r[0], y_r[1]], z=np.zeros((2,2)), 
                                  opacity=0.2, colorscale=[[0, 'yellow'], [1, 'yellow']], showscale=False, hoverinfo='skip'))
 
-# --- SIDEBAR NAVIGATION ---
+# --- SIDEBAR NAVIGATION (Updated to 2 Pages) ---
 st.sidebar.title("Navigation")
-page = st.sidebar.radio("Go to:", ["Page 1: Definitions & Examples", "Page 2: 3D Analysis & Derivatives", "Page 3: Real-Time Level Curves"])
+page = st.sidebar.radio("Go to:", ["Page 1: Definitions & Examples", "Page 2: 3D Analysis & Derivatives"])
 
 x_s, y_s = sp.symbols('x y')
 presets = {"Linear": "x + y", "Rational": "5/(x**2 + y**2 + 1)", "Root": "sqrt(x**2 + y**2)", "Trigo": "sin(x)*cos(y)"}
@@ -40,7 +40,7 @@ presets = {"Linear": "x + y", "Rational": "5/(x**2 + y**2 + 1)", "Root": "sqrt(x
 if page == "Page 1: Definitions & Examples":
     st.title("📖 Page 1: Functions of Two Variables")
 
-    # --- NEW DEFINITION SECTION ---
+    # --- DEFINITION SECTION ---
     st.info("### 📘 Mathematical Definition")
     st.markdown("""
     A **function of two variables** is a rule that assigns to each ordered pair of real numbers 
@@ -120,9 +120,10 @@ elif page == "Page 2: 3D Analysis & Derivatives":
                 tz_y = z0 + slope_y * (ty - py0)
                 fig.add_trace(go.Scatter3d(x=[px0]*50, y=ty, z=tz_y, mode='lines', line=dict(color='blue', width=12), name='∂f/∂y'))
             
+            # --- GRADIENT PLANE AT 50% VISIBILITY ---
             if show_grad:
                 GZ = z0 + slope_x*(X - px0) + slope_y*(Y - py0)
-                fig.add_trace(go.Surface(z=GZ, x=X, y=Y, opacity=0.9, colorscale=[[0, 'purple'], [1, 'purple']], showscale=False, name='Full Tangent Plane'))
+                fig.add_trace(go.Surface(z=GZ, x=X, y=Y, opacity=0.5, colorscale=[[0, 'purple'], [1, 'purple']], showscale=False, name='Full Tangent Plane'))
 
             fig.add_trace(go.Scatter3d(x=[px0], y=[py0], z=[z0], mode='markers', marker=dict(size=10, color='black')))
 
@@ -132,43 +133,3 @@ elif page == "Page 2: 3D Analysis & Derivatives":
 
     except Exception as e:
         st.error(f"Error: {e}")
-
-# ---------------------------------------------------------
-# PAGE 3: LEVEL CURVES
-# ---------------------------------------------------------
-elif page == "Page 3: Real-Time Level Curves":
-    st.title("🗺️ Page 3: 3D Intersection Level Curves")
-    import matplotlib.pyplot as plt 
-
-    func_type = st.sidebar.selectbox("Function Mode:", ["Custom"] + list(presets.keys()))
-    user_input = st.sidebar.text_input("Function f(x,y):", "x**2 + y**2") if func_type == "Custom" else presets[func_type]
-    
-    x_min, x_max = st.sidebar.slider("X Range", -10.0, 10.0, (-5.0, 5.0))
-    y_min, y_max = st.sidebar.slider("Y Range", -10.0, 10.0, (-5.0, 5.0))
-    
-    f_s = smart_parse(user_input); f_np = sp.lambdify((x_s, y_s), f_s, 'numpy')
-    x_v = np.linspace(x_min, x_max, 80); y_v = np.linspace(y_min, y_max, 80)
-    X, Y = np.meshgrid(x_v, y_v); Z = f_np(X, Y)
-    
-    k_val = st.sidebar.slider("Adjust Level k (z = k)", float(np.nanmin(Z)), float(np.nanmax(Z)), float(np.nanmean(Z)))
-
-    fig = go.Figure()
-    add_reference_planes(fig, [x_min, x_max], [y_min, y_max], [np.nanmin(Z), np.nanmax(Z)], show_z=False)
-    fig.add_trace(go.Surface(z=Z, x=X, y=Y, opacity=0.5, colorscale='Viridis', showscale=False))
-    
-    K_plane = np.full_like(Z, k_val)
-    fig.add_trace(go.Surface(z=K_plane, x=X, y=Y, opacity=0.9, colorscale=[[0, 'yellow'], [1, 'yellow']], showscale=False))
-
-    try:
-        cs = plt.contour(X, Y, Z, levels=[k_val])
-        for collection in cs.collections:
-            for path in collection.get_paths():
-                v = path.vertices
-                fig.add_trace(go.Scatter3d(x=v[:, 0], y=v[:, 1], z=np.full(len(v), k_val), 
-                                           mode='lines', line=dict(color='black', width=12), name='Level Curve'))
-        plt.close()
-    except:
-        st.warning("Intersection path not found for this k-level.")
-
-    fig.update_layout(scene=dict(aspectmode='cube'))
-    st.plotly_chart(fig, use_container_width=True)
