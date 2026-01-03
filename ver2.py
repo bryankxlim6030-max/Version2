@@ -3,16 +3,9 @@ import numpy as np
 import plotly.graph_objects as go
 import sympy as sp
 from sympy.parsing.sympy_parser import parse_expr, standard_transformations, implicit_multiplication_application, convert_xor
-from streamlit_plotly_events import plotly_events 
 
 # --- APP CONFIGURATION ---
 st.set_page_config(page_title="MAT201 Calculus Explorer", layout="wide")
-
-# Initialize Session State
-if 'px0' not in st.session_state:
-    st.session_state.px0 = 0.0
-if 'py0' not in st.session_state:
-    st.session_state.py0 = 0.0
 
 def smart_parse(user_input):
     try:
@@ -22,95 +15,121 @@ def smart_parse(user_input):
     except:
         return None
 
-# --- SIDEBAR ---
+def add_reference_planes(fig, x_r, y_r, z_r, show_z=True):
+    # X=0 Plane (Red)
+    fig.add_trace(go.Surface(x=[0, 0], y=[y_r[0], y_r[1]], z=np.array([[z_r[0], z_r[1]], [z_r[0], z_r[1]]]), 
+                             opacity=0.2, colorscale=[[0, 'red'], [1, 'red']], showscale=False, hoverinfo='skip'))
+    # Y=0 Plane (Blue)
+    fig.add_trace(go.Surface(x=[x_r[0], x_r[1]], y=[0, 0], z=np.array([[z_r[0], z_r[1]], [z_r[0], z_r[1]]]).T, 
+                             opacity=0.2, colorscale=[[0, 'blue'], [1, 'blue']], showscale=False, hoverinfo='skip'))
+    # Z=0 Plane (Yellow)
+    if show_z:
+        fig.add_trace(go.Surface(x=[x_r[0], x_r[1]], y=[y_r[0], y_r[1]], z=np.zeros((2,2)), 
+                                 opacity=0.2, colorscale=[[0, 'yellow'], [1, 'yellow']], showscale=False, hoverinfo='skip'))
+
+# --- SIDEBAR NAVIGATION (Updated to 2 Pages) ---
 st.sidebar.title("Navigation")
 page = st.sidebar.radio("Go to:", ["Page 1: Definitions & Examples", "Page 2: 3D Analysis & Derivatives"])
 
 x_s, y_s = sp.symbols('x y')
 presets = {"Linear": "x + y", "Rational": "5/(x**2 + y**2 + 1)", "Root": "sqrt(x**2 + y**2)", "Trigo": "sin(x)*cos(y)"}
 
-# --- PAGE 1 ---
+# ---------------------------------------------------------
+# PAGE 1: DEFINITIONS & EXAMPLES
+# ---------------------------------------------------------
 if page == "Page 1: Definitions & Examples":
     st.title("📖 Page 1: Functions of Two Variables")
+
+    # --- DEFINITION SECTION ---
+    st.info("### 📘 Mathematical Definition")
+    st.markdown("""
+    A **function of two variables** is a rule that assigns to each ordered pair of real numbers 
+    $(x, y)$ in a set $D$ (the domain) a unique real number denoted by $f(x, y)$. 
+    The graph of such a function is a surface in 3D space.
+    """)
+    
+    col_def1, col_def2 = st.columns(2)
+    with col_def1:
+        st.write("**General Form:**")
+        st.latex(r"z = f(x, y)")
+    with col_def2:
+        st.write("**Geometric Interpretation:**")
+        st.write("The set of all points $(x, y, z)$ such that $z = f(x, y)$ forms a **Surface** in $\mathbb{R}^3$.")
+
+    st.markdown("---")
+    st.subheader("💡 Visualizing Common Surface Examples")
+
     cols = st.columns(2)
     for idx, (name, formula) in enumerate(presets.items()):
         with cols[idx % 2]:
             st.write(f"**{name}:** $f(x,y) = {formula}$")
-            f_p = smart_parse(formula)
-            if f_p:
-                f_n = sp.lambdify((x_s, y_s), f_p, 'numpy')
-                px = np.linspace(-3, 3, 20); py = np.linspace(-3, 3, 20)
-                PX, PY = np.meshgrid(px, py); PZ = f_n(PX, PY)
-                fig_eg = go.Figure(data=[go.Surface(z=PZ, x=PX, y=PY, showscale=False)])
-                st.plotly_chart(fig_eg, use_container_width=True)
+            f_p = smart_parse(formula); f_n = sp.lambdify((x_s, y_s), f_p, 'numpy')
+            px = np.linspace(-3, 3, 30); py = np.linspace(-3, 3, 30); PX, PY = np.meshgrid(px, py); PZ = f_n(PX, PY)
+            fig = go.Figure(data=[go.Surface(z=PZ, x=PX, y=PY, showscale=False)])
+            add_reference_planes(fig, [-3, 3], [-3, 3], [np.nanmin(PZ), np.nanmax(PZ)])
+            st.plotly_chart(fig, use_container_width=True)
 
-# --- PAGE 2 ---
+# ---------------------------------------------------------
+# PAGE 2: 3D ANALYSIS (Expanded Tangents & Gradient)
+# ---------------------------------------------------------
 elif page == "Page 2: 3D Analysis & Derivatives":
     st.title("🧊 Page 2: Tangent Lines & Gradient Analysis")
     
     func_type = st.sidebar.selectbox("Function Mode:", ["Custom"] + list(presets.keys()))
     user_input = st.sidebar.text_input("Function f(x,y):", "x**2 - y**2") if func_type == "Custom" else presets[func_type]
+    
     x_min, x_max = st.sidebar.slider("X Range", -10.0, 10.0, (-5.0, 5.0))
     y_min, y_max = st.sidebar.slider("Y Range", -10.0, 10.0, (-5.0, 5.0))
+    
     mode = st.sidebar.radio("Mode:", ["Standard", "Analyse"])
+    
+    if mode == "Analyse":
+        st.sidebar.subheader("Point Selection (x0, y0)")
+        px0 = st.sidebar.number_input("x coordinate", value=0.0)
+        py0 = st.sidebar.number_input("y coordinate", value=0.0)
+        show_dx = st.sidebar.checkbox("Show ∂f/∂x (Red Line)", value=True)
+        show_dy = st.sidebar.checkbox("Show ∂f/∂y (Blue Line)", value=True)
+        show_grad = st.sidebar.checkbox("Show Gradient Tangent Plane (Purple)", value=True)
 
     try:
         f_s = smart_parse(user_input)
-        if f_s:
-            df_dx = sp.diff(f_s, x_s); df_dy = sp.diff(f_s, y_s)
-            f_np = sp.lambdify((x_s, y_s), f_s, 'numpy')
+        df_dx = sp.diff(f_s, x_s); df_dy = sp.diff(f_s, y_s)
+        f_np = sp.lambdify((x_s, y_s), f_s, 'numpy')
+
+        x_v = np.linspace(x_min, x_max, 50); y_v = np.linspace(y_min, y_max, 50)
+        X, Y = np.meshgrid(x_v, y_v); Z = f_np(X, Y)
+
+        fig = go.Figure()
+        add_reference_planes(fig, [x_min, x_max], [y_min, y_max], [np.nanmin(Z), np.nanmax(Z)])
+        
+        main_opacity = 1.0 if mode == "Standard" else 0.4
+        fig.add_trace(go.Surface(z=Z, x=X, y=Y, opacity=main_opacity, colorscale='Viridis', name='f(x,y)'))
+
+        if mode == "Analyse":
+            z0 = float(f_s.subs({x_s: px0, y_s: py0}))
+            slope_x = float(df_dx.subs({x_s: px0, y_s: py0}))
+            slope_y = float(df_dy.subs({x_s: px0, y_s: py0}))
+
+            if show_dx:
+                tx = np.linspace(x_min, x_max, 50)
+                tz_x = z0 + slope_x * (tx - px0)
+                fig.add_trace(go.Scatter3d(x=tx, y=[py0]*50, z=tz_x, mode='lines', line=dict(color='red', width=12), name='∂f/∂x'))
+
+            if show_dy:
+                ty = np.linspace(y_min, y_max, 50)
+                tz_y = z0 + slope_y * (ty - py0)
+                fig.add_trace(go.Scatter3d(x=[px0]*50, y=ty, z=tz_y, mode='lines', line=dict(color='blue', width=12), name='∂f/∂y'))
             
-            # Generate mesh
-            x_v = np.linspace(x_min, x_max, 40); y_v = np.linspace(y_min, y_max, 40)
-            X, Y = np.meshgrid(x_v, y_v); Z = f_np(X, Y)
+            # --- GRADIENT PLANE AT 50% VISIBILITY ---
+            if show_grad:
+                GZ = z0 + slope_x*(X - px0) + slope_y*(Y - py0)
+                fig.add_trace(go.Surface(z=GZ, x=X, y=Y, opacity=0.5, colorscale=[[0, 'purple'], [1, 'purple']], showscale=False, name='Full Tangent Plane'))
 
-            fig = go.Figure()
+            fig.add_trace(go.Scatter3d(x=[px0], y=[py0], z=[z0], mode='markers', marker=dict(size=10, color='black')))
 
-            if mode == "Standard":
-                fig.add_trace(go.Surface(z=Z, x=X, y=Y, colorscale='Viridis'))
-                st.plotly_chart(fig, use_container_width=True)
-            
-            else:
-                # --- ANALYSE MODE: STABILITY FIX ---
-                st.sidebar.subheader("Point Selection")
-                st.session_state.px0 = st.sidebar.number_input("x", value=float(st.session_state.px0), step=0.1)
-                st.session_state.py0 = st.sidebar.number_input("y", value=float(st.session_state.py0), step=0.1)
-                
-                curr_x, curr_y = st.session_state.px0, st.session_state.py0
-                z0 = float(f_s.subs({x_s: curr_x, y_s: curr_y}))
-                sx = float(df_dx.subs({x_s: curr_x, y_s: curr_y}))
-                sy = float(df_dy.subs({x_s: curr_x, y_s: curr_y}))
-
-                # 1. Main Surface (Using Mesh3d for better interaction stability)
-                fig.add_trace(go.Mesh3d(x=X.flatten(), y=Y.flatten(), z=Z.flatten(), 
-                                        opacity=0.7, color='lightgray', name='Surface'))
-                
-                # 2. Tangent Lines
-                tx = np.linspace(x_min, x_max, 40)
-                fig.add_trace(go.Scatter3d(x=tx, y=[curr_y]*40, z=z0 + sx*(tx-curr_x), 
-                                         mode='lines', line=dict(color='red', width=8), name='df/dx'))
-                
-                ty = np.linspace(y_min, y_max, 40)
-                fig.add_trace(go.Scatter3d(x=[curr_x]*40, y=ty, z=z0 + sy*(ty-curr_y), 
-                                         mode='lines', line=dict(color='blue', width=8), name='df/dy'))
-                
-                # 3. Target Point
-                fig.add_trace(go.Scatter3d(x=[curr_x], y=[curr_y], z=[z0], 
-                                         mode='markers', marker=dict(size=10, color='black')))
-
-                # UNIQUE KEY based on function to force refresh
-                selected = plotly_events(fig, click_event=True, key=f"fixed_plot_{user_input}")
-                
-                if selected:
-                    st.session_state.px0 = float(selected[0]['x'])
-                    st.session_state.py0 = float(selected[0]['y'])
-                    st.rerun()
-
-                st.latex(f"f({curr_x:.2f}, {curr_y:.2f}) = {z0:.2f}")
-                st.latex(r"\nabla f = \langle" + f"{sx:.2f}, {sy:.2f}" + r"\rangle")
-                
-                if st.button("🔄 Force Refresh Graph"):
-                    st.rerun()
+        st.plotly_chart(fig, use_container_width=True)
+        if mode == "Analyse":
+            st.latex(f"f({px0}, {py0}) = {z0:.2f} \\quad \\nabla f({px0}, {py0}) = \\langle {slope_x:.2f}, {slope_y:.2f} \\rangle")
 
     except Exception as e:
         st.error(f"Error: {e}")
