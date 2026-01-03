@@ -86,7 +86,6 @@ elif page == "Page 2: 3D Analysis & Derivatives":
     st.title("🧊 Page 2: Tangent Lines & Gradient Analysis")
     st.caption("Click the surface to select a point, or use the sidebar for manual entry.")
 
-    # Sidebar inputs
     func_type = st.sidebar.selectbox("Function Mode:", ["Custom"] + list(presets.keys()))
     user_input = st.sidebar.text_input("Function f(x,y):", "x**2 - y**2") if func_type == "Custom" else presets[func_type]
     
@@ -94,14 +93,11 @@ elif page == "Page 2: 3D Analysis & Derivatives":
     y_min, y_max = st.sidebar.slider("Y Range", -10.0, 10.0, (-5.0, 5.0))
     mode = st.sidebar.radio("Mode:", ["Standard", "Analyse"])
 
-    # Reset detection if function changes
     if st.session_state.last_func != user_input:
         st.session_state.last_func = user_input
-        # Points are kept, but math will re-evaluate
 
     if mode == "Analyse":
         st.sidebar.subheader("Point Selection")
-        # Ensure session state values are floats for number_input
         st.session_state.px0 = st.sidebar.number_input("x coordinate", value=float(st.session_state.px0), step=0.1)
         st.session_state.py0 = st.sidebar.number_input("y coordinate", value=float(st.session_state.py0), step=0.1)
         
@@ -110,11 +106,8 @@ elif page == "Page 2: 3D Analysis & Derivatives":
         show_grad = st.sidebar.checkbox("Show Tangent Plane (Purple)", value=True)
 
     try:
-        # Mathematical Processing
         f_s = smart_parse(user_input)
-        if f_s is None:
-            st.error("Invalid Mathematical Expression")
-        else:
+        if f_s is not None:
             df_dx = sp.diff(f_s, x_s)
             df_dy = sp.diff(f_s, y_s)
             f_np = sp.lambdify((x_s, y_s), f_s, 'numpy')
@@ -124,56 +117,49 @@ elif page == "Page 2: 3D Analysis & Derivatives":
             X, Y = np.meshgrid(x_v, y_v)
             Z = f_np(X, Y)
 
-            # Build Figure
             fig = go.Figure()
-            add_reference_planes(fig, [x_min, x_max], [y_min, y_max], [np.nanmin(Z), np.nanmax(Z)])
             
-            main_opacity = 1.0 if mode == "Standard" else 0.4
-            fig.add_trace(go.Surface(z=Z, x=X, y=Y, opacity=main_opacity, colorscale='Viridis', name='f(x,y)', hoverinfo='x+y+z'))
+            # 1. Always add the main surface first
+            # Increased opacity to 0.8 in Analyse mode to prevent it from disappearing
+            main_op = 1.0 if mode == "Standard" else 0.8
+            fig.add_trace(go.Surface(z=Z, x=X, y=Y, opacity=main_op, colorscale='Viridis', name='Main Surface'))
 
             if mode == "Analyse":
                 curr_x, curr_y = st.session_state.px0, st.session_state.py0
-                
-                # Symbolic substitution for high precision
                 z0 = float(f_s.subs({x_s: curr_x, y_s: curr_y}))
                 slope_x = float(df_dx.subs({x_s: curr_x, y_s: curr_y}))
                 slope_y = float(df_dy.subs({x_s: curr_x, y_s: curr_y}))
 
+                # Add analysis traces
                 if show_dx:
                     tx = np.linspace(x_min, x_max, 50)
-                    fig.add_trace(go.Scatter3d(x=tx, y=[curr_y]*50, z=z0 + slope_x*(tx - curr_x), 
-                                             mode='lines', line=dict(color='red', width=8), name='∂f/∂x'))
+                    fig.add_trace(go.Scatter3d(x=tx, y=[curr_y]*50, z=z0 + slope_x*(tx-curr_x), mode='lines', line=dict(color='red', width=10)))
                 if show_dy:
                     ty = np.linspace(y_min, y_max, 50)
-                    fig.add_trace(go.Scatter3d(x=[curr_x]*50, y=ty, z=z0 + slope_y*(ty - curr_y), 
-                                             mode='lines', line=dict(color='blue', width=8), name='∂f/∂y'))
+                    fig.add_trace(go.Scatter3d(x=[curr_x]*50, y=ty, z=z0 + slope_y*(ty-curr_y), mode='lines', line=dict(color='blue', width=10)))
                 if show_grad:
                     GZ = z0 + slope_x*(X - curr_x) + slope_y*(Y - curr_y)
-                    fig.add_trace(go.Surface(z=GZ, x=X, y=Y, opacity=0.5, 
-                                             colorscale=[[0, 'purple'], [1, 'purple']], showscale=False, name='Tangent Plane'))
+                    fig.add_trace(go.Surface(z=GZ, x=X, y=Y, opacity=0.4, colorscale=[[0, 'purple'], [1, 'purple']], showscale=False))
                 
-                fig.add_trace(go.Scatter3d(x=[curr_x], y=[curr_y], z=[z0], 
-                                         mode='markers', marker=dict(size=10, color='black'), name='Point'))
+                fig.add_trace(go.Scatter3d(x=[curr_x], y=[curr_y], z=[z0], mode='markers', marker=dict(size=8, color='black')))
 
-                # Display interactive plot
-                selected = plotly_events(fig, click_event=True, hover_event=False, key=f"plot_{user_input}")
-                
+                # Add reference planes last so they are behind
+                add_reference_planes(fig, [x_min, x_max], [y_min, y_max], [np.nanmin(Z), np.nanmax(Z)])
+
+                # Render with events
+                selected = plotly_events(fig, click_event=True, hover_event=False, key=f"int_{user_input}")
                 if selected:
                     st.session_state.px0 = float(selected[0]['x'])
                     st.session_state.py0 = float(selected[0]['y'])
-                    st.rerun() 
+                    st.rerun()
 
-                # Metrics Output
                 st.markdown("---")
-                col_m1, col_m2 = st.columns(2)
-                with col_m1:
-                    st.latex(f"f({st.session_state.px0:.2f}, {st.session_state.py0:.2f}) = {z0:.2f}")
-                with col_m2:
-                    st.latex(r"\nabla f = \langle " + f"{slope_x:.2f}, {slope_y:.2f}" + r"\rangle")
+                st.latex(f"f({curr_x:.2f}, {curr_y:.2f}) = {z0:.2f}")
+                st.latex(r"\nabla f = \langle " + f"{slope_x:.2f}, {slope_y:.2f}" + r"\rangle")
             
             else:
-                # Normal plot for Standard mode
+                add_reference_planes(fig, [x_min, x_max], [y_min, y_max], [np.nanmin(Z), np.nanmax(Z)])
                 st.plotly_chart(fig, use_container_width=True)
 
     except Exception as e:
-        st.error(f"Computation Error: {e}")
+        st.error(f"Error: {e}")
