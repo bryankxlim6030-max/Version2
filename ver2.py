@@ -7,135 +7,148 @@ from sympy.parsing.sympy_parser import parse_expr, standard_transformations, imp
 # --- APP CONFIGURATION ---
 st.set_page_config(page_title="MAT201 Calculus Explorer", layout="wide")
 
-# --- SMART PARSER (Handles 2xy, x^2, etc.) ---
 def smart_parse(user_input):
     try:
         clean_input = user_input.replace('^', '**')
         transformations = (standard_transformations + (implicit_multiplication_application, convert_xor))
         return parse_expr(clean_input, transformations=transformations)
-    except Exception as e:
+    except:
         return None
 
 # --- SIDEBAR NAVIGATION ---
 st.sidebar.title("Navigation")
-page = st.sidebar.radio("Go to:", ["Page 1: Definitions & Examples", "Page 2: 3D Surface & Derivatives", "Page 3: Level Curves (f(x,y)=k)"])
+page = st.sidebar.radio("Go to:", ["Page 1: Definitions & Examples", "Page 2: 3D Analysis & Derivatives", "Page 3: Real-Time Level Curves"])
 
-# Shared Variables for logic
 x_s, y_s = sp.symbols('x y')
 
 # ---------------------------------------------------------
-# PAGE 1: DEFINITIONS & EXAMPLES
+# PAGE 1: DEFINITIONS (First Octant Focus)
 # ---------------------------------------------------------
 if page == "Page 1: Definitions & Examples":
-    st.title("📖 Page 1: Understanding Functions of Two Variables")
-    st.markdown("""
-    ### Definition
-    A **function of two variables** $z = f(x, y)$ is a rule that assigns to each ordered pair of real numbers $(x, y)$ in a domain $D$ a unique real number $z$.
-    """)
+    st.title("📖 Page 1: Definitions (First Octant View)")
+    st.markdown("### Definition: $z = f(x, y)$\nIn this view, we focus on the **First Octant** ($x, y, z > 0$).")
     
-    st.subheader("Visual Examples of Function Types")
     cols = st.columns(2)
+    examples = [("Linear", "x + y"), ("Rational", "5/(x*y + 1)"), ("Root", "sqrt(x*y)"), ("Trigo", "abs(sin(x)*cos(y)*5)")]
     
-    examples = [
-        ("Linear", "x + y", "A flat tilted plane."),
-        ("Rational", "1 / (x^2 + y^2 + 1)", "A bell-shaped curve."),
-        ("Root", "sqrt(x^2 + y^2)", "A cone-shaped surface."),
-        ("Trigonometric", "sin(x) * cos(y)", "A periodic 'egg-carton' surface.")
-    ]
-    
-    for idx, (name, formula, desc) in enumerate(examples):
+    for idx, (name, formula) in enumerate(examples):
         with cols[idx % 2]:
-            st.write(f"**{name} Function:** $f(x,y) = {formula}$")
-            # Small preview plot
+            st.write(f"**{name}:** $f(x,y) = {formula}$")
             f_p = smart_parse(formula)
             f_n = sp.lambdify((x_s, y_s), f_p, 'numpy')
-            px = np.linspace(-3, 3, 30); py = np.linspace(-3, 3, 30)
+            # First Octant Range: 0 to 5
+            px = np.linspace(0.01, 5, 30); py = np.linspace(0.01, 5, 30)
             PX, PY = np.meshgrid(px, py)
             PZ = f_n(PX, PY)
             fig = go.Figure(data=[go.Surface(z=PZ, x=PX, y=PY, showscale=False)])
-            fig.update_layout(height=300, margin=dict(l=0,r=0,b=0,t=0))
+            fig.update_layout(height=300, margin=dict(l=0,r=0,b=0,t=0),
+                              scene=dict(xaxis=dict(range=[0,5]), yaxis=dict(range=[0,5]), zaxis=dict(range=[0, max(5, np.max(PZ)) if not np.isinf(np.max(PZ)) else 5])))
             st.plotly_chart(fig, use_container_width=True)
 
 # ---------------------------------------------------------
-# PAGE 2: 3D SURFACE & DERIVATIVES
+# PAGE 2: 3D SURFACE & MODES (Gradients & Derivatives)
 # ---------------------------------------------------------
 elif page == "Page 2: 3D Surface & Derivatives":
-    st.title("🧊 Page 2: 3D Surface & Real-Time Derivatives")
+    st.title("🧊 Page 2: Advanced 3D Analysis")
     
-    st.sidebar.subheader("Function Settings")
-    preset = st.sidebar.selectbox("Choose a function:", ["Custom", "x + y", "1/(x**2 + y**2 + 1)", "sqrt(x**2 + y**2)", "sin(x)*cos(y)"])
+    # Sidebar Controls
+    st.sidebar.subheader("Function & Range")
+    user_input = st.sidebar.text_input("Function f(x,y):", "x**2 - y**2")
+    x_range = st.sidebar.slider("X/Y Limit", 1, 10, 5)
     
-    if preset == "Custom":
-        user_input = st.sidebar.text_input("Enter function (e.g., 2xy, x^2):", "x**2 - y**2")
-    else:
-        user_input = preset
-
-    # Range Controls (Individual X, Y, Z)
-    st.sidebar.subheader("Axis Ranges")
-    x_min, x_max = st.sidebar.slider("X Range", -10.0, 10.0, (-5.0, 5.0))
-    y_min, y_max = st.sidebar.slider("Y Range", -10.0, 10.0, (-5.0, 5.0))
-    z_auto = st.sidebar.checkbox("Auto-scale Z", value=True)
-    z_range = [0, 0]
-    if not z_auto:
-        z_range = st.sidebar.slider("Z Range", -20.0, 20.0, (-5.0, 5.0))
+    st.sidebar.subheader("Visual Focus Mode")
+    mode = st.sidebar.radio("Focus Overlay:", ["Standard Surface", "Partial Derivative Mode", "Gradient Surface Mode"])
 
     try:
         f_s = smart_parse(user_input)
         df_dx = sp.diff(f_s, x_s)
         df_dy = sp.diff(f_s, y_s)
+        
         f_np = sp.lambdify((x_s, y_s), f_s, 'numpy')
-
-        # Real-time data generation
-        x_v = np.linspace(x_min, x_max, 50)
-        y_v = np.linspace(y_min, y_max, 50)
+        
+        res = 50
+        x_v = np.linspace(-x_range, x_range, res)
+        y_v = np.linspace(-x_range, x_range, res)
         X, Y = np.meshgrid(x_v, y_v)
         Z = f_np(X, Y)
 
-        # Plot with Real-time Hover Data
-        fig = go.Figure(data=[go.Surface(z=Z, x=X, y=Y)])
-        fig.update_traces(hovertemplate="x: %{x:.2f}<br>y: %{y:.2f}<br>z: %{z:.2f}")
-        
-        if not z_auto:
-            fig.update_layout(scene=dict(zaxis=dict(range=z_range)))
-        
-        st.plotly_chart(fig, use_container_width=True)
+        fig = go.Figure()
 
-        st.subheader("Calculus Results")
-        st.latex(f"\\frac{{\\partial f}}{{\\partial x}} = {sp.latex(df_dx)}")
-        st.latex(f"\\frac{{\\partial f}}{{\\partial y}} = {sp.latex(df_dy)}")
-        st.info("💡 Move your cursor over the graph to see coordinates and gradients.")
+        # 1. Origin "Net" / Reference Planes
+        # Creating invisible-ish zero planes to solve the "wall" issue
+        zero_line_style = dict(color="rgba(0,0,0,0.2)", width=2)
+        fig.update_layout(scene=dict(
+            xaxis=dict(showgrid=True, zeroline=True, zerolinethickness=4, zerolinecolor='red'),
+            yaxis=dict(showgrid=True, zeroline=True, zerolinethickness=4, zerolinecolor='green'),
+            zaxis=dict(showgrid=True, zeroline=True, zerolinethickness=4, zerolinecolor='blue'),
+        ))
+
+        # Main Surface (Becomes transparent in other modes)
+        opac = 0.9 if mode == "Standard Surface" else 0.3
+        fig.add_trace(go.Surface(z=Z, x=X, y=Y, opacity=opac, colorscale='Viridis', name='f(x,y)'))
+
+        if mode == "Partial Derivative Mode":
+            st.info("Showing Partial Derivative Visuals. Focus shifted from main surface.")
+            # Calculate a sample trace for visualization
+            dz_dx_np = sp.lambdify((x_s, y_s), df_dx, 'numpy')
+            Z_deriv = dz_dx_np(X, Y)
+            fig.add_trace(go.Surface(z=Z_deriv, x=X, y=Y, opacity=0.9, colorscale='Reds', name='df/dx'))
+
+        elif mode == "Gradient Surface Mode":
+            st.info("Showing Gradient Magnitude Surface. Focus shifted from main surface.")
+            grad_mag = sp.sqrt(df_dx**2 + df_dy**2)
+            grad_np = sp.lambdify((x_s, y_s), grad_mag, 'numpy')
+            Z_grad = grad_np(X, Y)
+            fig.add_trace(go.Surface(z=Z_grad, x=X, y=Y, opacity=0.9, colorscale='Magma', name='|Grad f|'))
+
+        fig.update_traces(hovertemplate="x: %{x:.2f}<br>y: %{y:.2f}<br>z: %{z:.2f}")
+        st.plotly_chart(fig, use_container_width=True)
+        
+        st.latex(f"f(x,y) = {sp.latex(f_s)}")
+        st.latex(f"\\nabla f = \\langle {sp.latex(df_dx)}, {sp.latex(df_dy)} \\rangle")
 
     except Exception as e:
-        st.error(f"Error: {e}")
+        st.error(f"Input Error: {e}")
 
 # ---------------------------------------------------------
-# PAGE 3: LEVEL CURVES (f(x,y)=k)
+# PAGE 3: REAL-TIME LEVEL CURVES (Surface k)
 # ---------------------------------------------------------
-elif page == "Page 3: Level Curves (f(x,y)=k)":
-    st.title("🗺️ Page 3: Level Curves & Contour Plots")
+elif page == "Page 3: Real-Time Level Curves":
+    st.title("🗺️ Page 3: Real-Time Level Surface Intersection")
     
-    st.sidebar.subheader("Contour Settings")
+    st.sidebar.subheader("Controls")
     user_input = st.sidebar.text_input("Function f(x,y):", "x**2 + y**2")
-    k_val = st.sidebar.slider("Value of k (Level)", -10.0, 10.0, 0.0)
-    
+    k_val = st.sidebar.slider("Adjust Level k (z = k)", -10.0, 10.0, 1.0)
+    show_main = st.sidebar.checkbox("Show Main Surface Transparently", value=True)
+
     try:
         f_s = smart_parse(user_input)
         f_np = sp.lambdify((x_s, y_s), f_s, 'numpy')
         
-        x_v = np.linspace(-5, 5, 100)
-        y_v = np.linspace(-5, 5, 100)
+        x_v = np.linspace(-5, 5, 60)
+        y_v = np.linspace(-5, 5, 60)
         X, Y = np.meshgrid(x_v, y_v)
         Z = f_np(X, Y)
 
-        # Contour Plot
-        fig = go.Figure(data=go.Contour(z=Z, x=x_v, y=y_v, 
-                                        contours=dict(start=k_val, end=k_val+0.1, size=0.1, showlabels=True),
-                                        colorscale='Viridis'))
-        
-        fig.update_layout(title=f"Level Curve at f(x,y) = {k_val}")
+        fig = go.Figure()
+
+        # Transparent Main Surface
+        if show_main:
+            fig.add_trace(go.Surface(z=Z, x=X, y=Y, opacity=0.2, showscale=False))
+
+        # Real-time Shifting k-plane (Surface k)
+        K_plane = np.full_like(Z, k_val)
+        fig.add_trace(go.Surface(z=K_plane, x=X, y=Y, opacity=0.5, colorscale='Blues', showscale=False, name=f'z={k_val}'))
+
+        # Intersection / Level Curve (Contour on a 3D Plane)
+        fig.add_trace(go.Contour(z=Z, x=x_v, y=y_v, 
+                                 contours=dict(start=k_val, end=k_val, size=1),
+                                 line=dict(width=5, color='red'),
+                                 showscale=False))
+
+        fig.update_layout(scene=dict(zaxis=dict(range=[-10, 10])))
         st.plotly_chart(fig, use_container_width=True)
-        
-        st.markdown(f"**Current Level Equation:** ${sp.latex(f_s)} = {k_val}$")
+        st.write(f"Level Curve at $z = {k_val}$")
 
     except Exception as e:
         st.error(f"Error: {e}")
