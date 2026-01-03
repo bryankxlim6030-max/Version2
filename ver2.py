@@ -90,21 +90,20 @@ elif page == "Page 2: 3D Analysis & Derivatives":
             slope_x = float(df_dx.subs({x_s: px0, y_s: py0}))
             slope_y = float(df_dy.subs({x_s: px0, y_s: py0}))
 
-            # EXPANDED TANGENT LINES: Span the entire X and Y range
             if show_dx:
                 tx = np.linspace(x_min, x_max, 50)
                 tz_x = z0 + slope_x * (tx - px0)
-                fig.add_trace(go.Scatter3d(x=tx, y=[py0]*50, z=tz_x, mode='lines', line=dict(color='red', width=12), name='∂f/∂x (Slope X)'))
+                fig.add_trace(go.Scatter3d(x=tx, y=[py0]*50, z=tz_x, mode='lines', line=dict(color='red', width=12), name='∂f/∂x'))
 
             if show_dy:
                 ty = np.linspace(y_min, y_max, 50)
                 tz_y = z0 + slope_y * (ty - py0)
-                fig.add_trace(go.Scatter3d(x=[px0]*50, y=ty, z=tz_y, mode='lines', line=dict(color='blue', width=12), name='∂f/∂y (Slope Y)'))
+                fig.add_trace(go.Scatter3d(x=[px0]*50, y=ty, z=tz_y, mode='lines', line=dict(color='blue', width=12), name='∂f/∂y'))
             
-            # EXPANDED GRADIENT PLANE: Spans the whole grid
+            # 1. Gradient Surface (Tangent Plane) set to 90% visibility
             if show_grad:
                 GZ = z0 + slope_x*(X - px0) + slope_y*(Y - py0)
-                fig.add_trace(go.Surface(z=GZ, x=X, y=Y, opacity=0.4, colorscale=[[0, 'purple'], [1, 'purple']], showscale=False, name='Full Tangent Plane'))
+                fig.add_trace(go.Surface(z=GZ, x=X, y=Y, opacity=0.9, colorscale=[[0, 'purple'], [1, 'purple']], showscale=False, name='Full Tangent Plane'))
 
             fig.add_trace(go.Scatter3d(x=[px0], y=[py0], z=[z0], mode='markers', marker=dict(size=10, color='black')))
 
@@ -116,11 +115,11 @@ elif page == "Page 2: 3D Analysis & Derivatives":
         st.error(f"Error: {e}")
 
 # ---------------------------------------------------------
-# PAGE 3: LEVEL CURVES (Robust Path-Finding)
+# PAGE 3: LEVEL CURVES
 # ---------------------------------------------------------
 elif page == "Page 3: Real-Time Level Curves":
     st.title("🗺️ Page 3: 3D Intersection Level Curves")
-    import matplotlib.pyplot as plt # Requires matplotlib in requirements.txt
+    import matplotlib.pyplot as plt
 
     func_type = st.sidebar.selectbox("Function Mode:", ["Custom"] + list(presets.keys()))
     user_input = st.sidebar.text_input("Function f(x,y):", "x**2 + y**2") if func_type == "Custom" else presets[func_type]
@@ -138,11 +137,10 @@ elif page == "Page 3: Real-Time Level Curves":
     add_reference_planes(fig, [x_min, x_max], [y_min, y_max], [np.nanmin(Z), np.nanmax(Z)], show_z=False)
     fig.add_trace(go.Surface(z=Z, x=X, y=Y, opacity=0.5, colorscale='Viridis', showscale=False))
     
-    # Yellow Shifting Plane
+    # 2. Yellow k-level Plane set to 90% visibility
     K_plane = np.full_like(Z, k_val)
-    fig.add_trace(go.Surface(z=K_plane, x=X, y=Y, opacity=0.2, colorscale=[[0, 'yellow'], [1, 'yellow']], showscale=False))
+    fig.add_trace(go.Surface(z=K_plane, x=X, y=Y, opacity=0.9, colorscale=[[0, 'yellow'], [1, 'yellow']], showscale=False))
 
-    # High-Success Intersection Logic
     try:
         cs = plt.contour(X, Y, Z, levels=[k_val])
         for collection in cs.collections:
