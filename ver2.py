@@ -2,73 +2,80 @@ import streamlit as st
 import numpy as np
 import plotly.graph_objects as go
 import sympy as sp
-from sympy.parsing.sympy_parser import parse_expr, standard_transformations, implicit_multiplication_application
+from sympy.parsing.sympy_parser import parse_expr, standard_transformations, implicit_multiplication_application, convert_xor
 
-# 1. Definition (Required for CO1 Fundamental Concepts)
+# --- UI Header & Definition (CO1 Requirement) ---
+st.set_page_config(page_title="MAT201 Function Visualizer", layout="wide")
 st.title("MAT201: Interactive Function Explorer")
+
 st.markdown("""
-### Definition: Function of Two Variables
-A function $z = f(x, y)$ assigns a unique real number to each pair $(x, y)$ in its domain $D$. 
-The set of all points $(x, y, z)$ satisfying $z = f(x, y)$ forms a **surface** in 3D space.
+**Definition:** A function of two variables $z = f(x, y)$ maps pairs of inputs from the $xy$-plane to a specific height $z$. 
+This app calculates the surface, its partial derivatives, and allows for natural math input.
 """)
 
-# Sidebar Improvements
-st.sidebar.header("Settings & Input")
+# --- Helper Function for Non-Coders ---
+def smart_parse(user_input):
+    # 1. Replace common non-python symbols
+    clean_input = user_input.replace('^', '**')
+    clean_input = clean_input.replace('e**', 'exp') # Handles e^x style
+    
+    # 2. Allow implicit multiplication (e.g., 2xy, (x+1)(y-1))
+    # 'convert_xor' handles the ^ symbol if replace failed
+    transformations = (standard_transformations + 
+                       (implicit_multiplication_application, convert_xor))
+    
+    return parse_expr(clean_input, transformations=transformations)
 
-# Feature: Implicit Multiplication Handler
-def parse_math(user_input):
-    transformations = (standard_transformations + (implicit_multiplication_application,))
-    return parse_expr(user_input, transformations=transformations)
+# --- Sidebar ---
+st.sidebar.header("Mathematical Input")
+st.sidebar.info("You can type naturally: e.g., '2xy', 'sin(xy)', 'x^2 + y^2', or '(x+y)2'")
 
-# Feature: Preset Examples for "Two Different Complexities"
-example = st.sidebar.selectbox("Choose a preset or type your own:", 
-                                ["Custom", "x^2 + y^2", "sin(x) * cos(y)", "exp(-(x^2 + y^2))"])
+raw_input = st.sidebar.text_input("Enter your function f(x, y):", "2xy + sin(x)")
 
-if example == "Custom":
-    user_input = st.sidebar.text_input("Enter function (e.g., 2xy, x^2, sin(x)):", "x**2 - y**2")
-else:
-    user_input = example
-
-# Feature: Sliders for Range Control
-res = st.sidebar.slider("Graph Resolution", 20, 100, 50)
-xy_limit = st.sidebar.slider("X & Y Range", 1, 10, 5)
-
+# --- Math Logic ---
 x_s, y_s = sp.symbols('x y')
 
 try:
-    # Handle the flexible input style (e.g., 2xy -> 2*x*y)
-    f_s = parse_math(user_input.replace('^', '**'))
+    # Use our smart parser
+    f_sympy = smart_parse(raw_input)
     
-    # Calculate Partial Derivatives (Topic 2)
-    df_dx = sp.diff(f_s, x_s)
-    df_dy = sp.diff(f_s, y_s)
+    # Calculate Derivatives for Topic 2
+    df_dx = sp.diff(f_sympy, x_s)
+    df_dy = sp.diff(f_sympy, y_s)
 
-    # Prepare Numerical Data
-    x_vec = np.linspace(-xy_limit, xy_limit, res)
-    y_vec = np.linspace(-xy_limit, xy_limit, res)
-    X, Y = np.meshgrid(x_vec, y_vec)
-    f_np = sp.lambdify((x_s, y_s), f_s, 'numpy')
-    Z = f_np(X, Y)
-
-    # 2. Interactive 3D Visualization (CO1 Cognitive Application)
-    fig = go.Figure(data=[go.Surface(z=Z, x=X, y=Y, colorscale='Viridis')])
+    # Numerical Conversion for Plotting
+    f_func = sp.lambdify((x_s, y_s), f_sympy, 'numpy')
     
-    # Feature: Enhanced Hover Labels
+    x_val = np.linspace(-5, 5, 60)
+    y_val = np.linspace(-5, 5, 60)
+    X, Y = np.meshgrid(x_val, y_val)
+    Z = f_func(X, Y)
+
+    # --- 3D Visualization (CO1: Meaningful Visualization) ---
+    fig = go.Figure(data=[go.Surface(z=Z, x=X, y=Y, colorscale='Plasma')])
+    
+    # Custom Hover Info for Gradient/Coordinates
     fig.update_traces(
-        hovertemplate="<b>Coord:</b> (%{x:.2f}, %{y:.2f})<br><b>Height (z):</b> %{z:.2f}<extra></extra>"
+        hovertemplate="Point: (%{x:.2f}, %{y:.2f})<br>Height (z): %{z:.2f}<extra></extra>"
     )
     
-    fig.update_layout(title=f"Surface of z = {user_input}", autosize=True)
+    fig.update_layout(
+        title=f"Surface Visualization of: {raw_input}",
+        scene=dict(xaxis_title='X axis', yaxis_title='Y axis', zaxis_title='Z (Output)'),
+        margin=dict(l=0, r=0, b=0, t=40)
+    )
+    
     st.plotly_chart(fig, use_container_width=True)
 
-    # Results Display
-    col1, col2 = st.columns(2)
-    with col1:
-        st.write("**Partial Derivative w.r.t $x$:**")
+    # --- Display Results ---
+    st.divider()
+    c1, c2 = st.columns(2)
+    with c1:
+        st.subheader("Partial Derivative (∂f/∂x)")
         st.latex(sp.latex(df_dx))
-    with col2:
-        st.write("**Partial Derivative w.r.t $y$:**")
+    with c2:
+        st.subheader("Partial Derivative (∂f/∂y)")
         st.latex(sp.latex(df_dy))
 
 except Exception as e:
-    st.error(f"Input Error: Please check your syntax. (Error: {e})")
+    st.error(f"Waiting for valid input... Error: {e}")
