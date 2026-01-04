@@ -2,5 +2,5 @@ streamlit
 numpy
 plotly
 sympy
-streamlit-math-input
+streamlit-mathlive
 streamlit-plotly-events
