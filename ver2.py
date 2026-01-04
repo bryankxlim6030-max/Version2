@@ -3,31 +3,34 @@ import numpy as np
 import plotly.graph_objects as go
 import sympy as sp
 from sympy.parsing.sympy_parser import parse_expr, standard_transformations, implicit_multiplication_application, convert_xor
-# You must install this: pip install streamlit-math-live streamlit-plotly-events
-from streamlit_math_live import math_live
+# Updated library name
+from streamlit_math_input import math_input
 from streamlit_plotly_events import plotly_events 
 
 # --- APP CONFIGURATION ---
 st.set_page_config(page_title="MAT201 Calculus Explorer", layout="wide")
 
-# Initialize Session State for coordinates
+# Initialize Session State
 if 'px0' not in st.session_state:
     st.session_state.px0 = 0.0
 if 'py0' not in st.session_state:
     st.session_state.py0 = 0.0
 
 def smart_parse(user_input):
+    if not user_input:
+        return None
     try:
-        # MathLive provides LaTeX, so we convert common LaTeX to SymPy readable format
+        # MathInput returns LaTeX. We clean it for SymPy.
         clean_input = user_input.replace(r'\frac', '/').replace('{', '(').replace('}', ')')
         clean_input = clean_input.replace(r'\cdot', '*').replace('^', '**')
-        # Removing remaining backslashes from common functions
+        clean_input = clean_input.replace(r'\pi', 'pi')
+        # Remove backslashes from functions
         for func in ['sin', 'cos', 'tan', 'sqrt', 'log', 'exp']:
             clean_input = clean_input.replace('\\' + func, func)
         
         transformations = (standard_transformations + (implicit_multiplication_application, convert_xor))
         return parse_expr(clean_input, transformations=transformations)
-    except:
+    except Exception:
         return None
 
 def add_reference_planes(fig, x_r, y_r, z_r, show_z=True):
@@ -68,27 +71,24 @@ if page == "Page 1: Definitions & Examples":
                 st.plotly_chart(fig_eg, use_container_width=True)
 
 # ---------------------------------------------------------
-# PAGE 2: 3D ANALYSIS (STABLE VERSION - ANALYSE ONLY)
+# PAGE 2: 3D ANALYSIS (ANALYSE ONLY)
 # ---------------------------------------------------------
 elif page == "Page 2: 3D Analysis & Derivatives":
     st.title("🧊 Page 2: Tangent Lines & Gradient Analysis")
-    st.caption("Use the math keyboard below to define your function, then click the surface to analyze points.")
-
-    # Function Input with MathLive
-    st.write("### Define Function $f(x,y)$")
-    func_type = st.sidebar.selectbox("Preset Functions:", ["Custom"] + list(presets.keys()))
     
-    # MathLive Keyboard Integration
-    default_val = "x^2 - y^2" if func_type == "Custom" else presets[func_type].replace("**", "^")
-    user_input = math_live(value=default_val, key="math_input")
+    st.write("### Define your function $f(x,y)$")
+    func_type = st.sidebar.selectbox("Use a preset:", ["Custom"] + list(presets.keys()))
+    default_formula = "x^2 - y^2" if func_type == "Custom" else presets[func_type].replace("**", "^")
+    
+    # NEW COMPONENT: Math Input keyboard
+    user_input = math_input(formula=default_formula, key="math_key")
     
     x_min, x_max = st.sidebar.slider("X Range", -10.0, 10.0, (-5.0, 5.0))
     y_min, y_max = st.sidebar.slider("Y Range", -10.0, 10.0, (-5.0, 5.0))
-
-    # Point Selection
+    
     st.sidebar.subheader("Point Selection")
-    st.session_state.px0 = st.sidebar.number_input("x coordinate", value=float(st.session_state.px0), step=0.1)
-    st.session_state.py0 = st.sidebar.number_input("y coordinate", value=float(st.session_state.py0), step=0.1)
+    st.session_state.px0 = st.sidebar.number_input("x", value=float(st.session_state.px0), step=0.1)
+    st.session_state.py0 = st.sidebar.number_input("y", value=float(st.session_state.py0), step=0.1)
     
     show_dx = st.sidebar.checkbox("Show ∂f/∂x (Red)", value=True)
     show_dy = st.sidebar.checkbox("Show ∂f/∂y (Blue)", value=True)
@@ -105,9 +105,9 @@ elif page == "Page 2: 3D Analysis & Derivatives":
 
             fig = go.Figure()
             
-            # Surface rendering
+            # Using Mesh3d for better stability
             fig.add_trace(go.Mesh3d(x=X.flatten(), y=Y.flatten(), z=Z.flatten(), 
-                                    opacity=0.6, color='lightblue', name='Surface'))
+                                    opacity=0.7, color='lightblue', name='Surface'))
 
             curr_x, curr_y = st.session_state.px0, st.session_state.py0
             z0 = float(f_s.subs({x_s: curr_x, y_s: curr_y}))
@@ -126,7 +126,7 @@ elif page == "Page 2: 3D Analysis & Derivatives":
             
             fig.add_trace(go.Scatter3d(x=[curr_x], y=[curr_y], z=[z0], mode='markers', marker=dict(size=10, color='black')))
 
-            # Click Event Integration
+            # Click Event
             selected = plotly_events(fig, click_event=True, key=f"plot_{user_input}")
             
             if selected:
@@ -134,8 +134,8 @@ elif page == "Page 2: 3D Analysis & Derivatives":
                 st.session_state.py0 = float(selected[0]['y'])
                 st.rerun()
 
-            st.latex(f"f({curr_x:.2f}, {curr_y:.2f}) = {z0:.2f}")
-            st.latex(r"\nabla f = \langle" + f"{sx:.2f}, {sy:.2f}" + r"\rangle")
+            st.markdown("---")
+            st.latex(f"f({curr_x:.2f}, {curr_y:.2f}) = {z0:.2f} \\quad \\nabla f = \\langle {sx:.2f}, {sy:.2f} \\rangle")
 
     except Exception as e:
-        st.error(f"Mathematical Error: {e}")
+        st.info("Enter a valid function to see the 3D analysis.")
